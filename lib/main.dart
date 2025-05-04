@@ -3,17 +3,24 @@ import 'pages/inicio_page.dart';
 import 'pages/comunidad_page.dart';
 import 'pages/perfil_page.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-void main() => runApp(const YuravisionApp());
+void main() => runApp(const MyApp());
 
-class YuravisionApp extends StatelessWidget {
-  const YuravisionApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Yuravision',
-      theme: ThemeData(primarySwatch: Colors.green),
+      theme: ThemeData(
+        primaryColor: const Color(0xFF00863b),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00863b)),
+        useMaterial3: true,
+        textTheme: GoogleFonts.montserratTextTheme(),
+      ),
+
       home: const HomePage(),
       debugShowCheckedModeBanner: false,
     );
