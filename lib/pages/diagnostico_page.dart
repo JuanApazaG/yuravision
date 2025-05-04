@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:mime/mime.dart';
+import 'package:http_parser/http_parser.dart';
 
 class DiagnosticoPage extends StatefulWidget {
   final File imagenFile;
@@ -19,7 +22,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
   bool _isRecording = false;
   String? _audioPath;
 
-  // Cultivo seleccionado
+  // Selector de cultivo
   String _selectedCultivo = 'Papa';
 
   @override
@@ -49,6 +52,88 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     });
   }
 
+  // 🔽 Mapea cultivo a ID (ajustable según tu backend)
+  int _getCultivoId(String cultivo) {
+    switch (cultivo.toLowerCase()) {
+      case 'papa':
+        return 1;
+      case 'tomate':
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  Future<void> _enviarDatos() async {
+    final uri = Uri.parse("http://192.168.1.2:3000/api/deteccion/detectar-cultivo-ia");
+    final request = http.MultipartRequest('POST', uri);
+
+    // 🔧 DATOS: agricultorId, cultivoId, descripcion
+    final agricultorId = '123'; // ⚠️ Reemplazar luego con ID dinámico
+    request.fields['agricultorId'] = agricultorId;
+    request.fields['cultivoId'] = _getCultivoId(_selectedCultivo).toString();
+    request.fields['descripcion'] = _controller.text;
+
+    // 🖼️ IMAGEN
+    request.files.add(await http.MultipartFile.fromPath(
+      'image',
+      widget.imagenFile.path,
+      contentType: MediaType.parse(lookupMimeType(widget.imagenFile.path) ?? 'image/jpeg'),
+    ));
+
+    // 🎙️ AUDIO (si existe)
+    if (_audioPath != null && File(_audioPath!).existsSync()) {
+      request.files.add(await http.MultipartFile.fromPath(
+        'audio',
+        _audioPath!,
+        contentType: MediaType.parse(lookupMimeType(_audioPath!) ?? 'audio/aac'),
+      ));
+    }
+
+    // 🛠️ DEBUG: mostrar datos que se enviarán
+    print("⏳ Enviando datos...");
+    print("Campos:");
+    request.fields.forEach((key, value) => print("  $key: $value"));
+    print("Archivos:");
+    for (var file in request.files) {
+      print("  ${file.field}: ${file.filename} (${file.contentType})");
+    }
+
+    try {
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 201) {
+        print(" Respuesta del servidor:\n$responseBody");
+        _mostrarDialogo("Éxito", "Datos enviados correctamente.");
+      } else {
+        print(" Código ${response.statusCode}");
+        print(" Respuesta del servidor:\n$responseBody");
+        _mostrarDialogo("Error", "Error al enviar los datos. Código: ${response.statusCode}");
+      }
+    } catch (e, stack) {
+      print("🔥 Error al enviar: $e");
+      print(stack);
+      _mostrarDialogo("Error", "Error de red o servidor: $e");
+    }
+  }
+
+  void _mostrarDialogo(String titulo, String mensaje) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(titulo),
+        content: Text(mensaje),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _recorder.closeRecorder();
@@ -67,11 +152,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
             Image.file(widget.imagenFile, height: 200),
             const SizedBox(height: 16),
 
-            // Selector de cultivo
-            const Text(
-              'Selecciona tu cultivo:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text('Selecciona tu cultivo:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               value: _selectedCultivo,
@@ -79,10 +160,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
               items: ['Papa', 'Tomate'].map((cultivo) {
-                return DropdownMenuItem(
-                  value: cultivo,
-                  child: Text(cultivo),
-                );
+                return DropdownMenuItem(value: cultivo, child: Text(cultivo));
               }).toList(),
               onChanged: (value) {
                 if (value != null) {
@@ -94,8 +172,6 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
             ),
 
             const SizedBox(height: 16),
-
-            // Diagnóstico
             Text(
               'Diagnóstico para $_selectedCultivo:',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -114,8 +190,6 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
             ),
 
             const SizedBox(height: 16),
-
-            // Texto adicional
             TextField(
               controller: _controller,
               maxLines: 4,
@@ -124,9 +198,8 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
 
-            // Grabación
+            const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _isRecording ? _stopRecording : _startRecording,
               icon: Icon(_isRecording ? Icons.stop : Icons.mic),
@@ -138,6 +211,18 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
                 padding: const EdgeInsets.only(top: 10),
                 child: Text('Audio guardado en: $_audioPath'),
               ),
+
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _enviarDatos,
+              icon: const Icon(Icons.send),
+              label: const Text("Enviar diagnóstico"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[800],
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                textStyle: const TextStyle(fontSize: 16),
+              ),
+            ),
           ],
         ),
       ),
