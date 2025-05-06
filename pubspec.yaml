@@ -50,6 +50,7 @@ dependencies:
   lottie: ^3.2.0
   dio: ^5.8.0+1
   open_file: ^3.5.10
+  shared_preferences: ^2.5.3
   # open_filex: ^4.0.0
 
 

@@ -1,5 +1,6 @@
-
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:http/http.dart' as http;
@@ -8,9 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:open_file/open_file.dart';
 
-// 🎨 Paleta de colores 
+import '../models/cultivo_model.dart';
+
+// 🎨 Paleta de colores
 const Color verdeClaro = Color(0xFF24D083);
 const Color verdeOscuro = Color(0xFF046224);
 const Color amarilloClaro = Color(0xFFFCEC9F);
@@ -36,6 +38,8 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
   bool _isPlaying = false;
   String? _audioPath;
 
+  List<Cultivo> _cultivos = [];
+  bool _isLoadingCultivos = true;
   String _selectedCultivo = 'Papa';
 
   @override
@@ -43,6 +47,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     super.initState();
     _initRecorder();
     _player.openPlayer();
+    _fetchCultivos();
   }
 
   Future<void> _initRecorder() async {
@@ -50,23 +55,57 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     await _recorder.openRecorder();
   }
 
+  Future<void> _fetchCultivos() async {
+    try {
+      final response = await http.get(Uri.parse('http://192.168.1.2:3000/api/cultivo/'));
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final data = json['data'];
+        final cultivosList = data['cultivos'] as List;
+        setState(() {
+          _cultivos = cultivosList.map((item) => Cultivo.fromJson(item)).toList();
+          
+          final papaExists = _cultivos.any((c) => c.nombre.toLowerCase() == 'papa');
+          
+          if (papaExists) {
+            _selectedCultivo = 'Papa';
+          } else if (_cultivos.isNotEmpty) {
+            _selectedCultivo = _cultivos.first.nombre;
+          }
+          
+          _isLoadingCultivos = false;
+        });
+      } else {
+        throw Exception("Error al cargar cultivos: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error al obtener cultivos: $e");
+      setState(() {
+        _isLoadingCultivos = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar los cultivos. Se mantendrá "Papa" como valor por defecto.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _startRecording() async {
     final dir = await getTemporaryDirectory();
     _audioPath = '${dir.path}/audio_recording.m4a';
-    await _recorder.startRecorder(
-      toFile: _audioPath,
-      codec: Codec.aacMP4,
-    );
-    setState(() {
-      _isRecording = true;
-    });
+    await _recorder.startRecorder(toFile: _audioPath, codec: Codec.aacMP4);
+    setState(() => _isRecording = true);
   }
 
   Future<void> _stopRecording() async {
     await _recorder.stopRecorder();
-    setState(() {
-      _isRecording = false;
-    });
+    setState(() => _isRecording = false);
   }
 
   Future<void> _playAudio() async {
@@ -85,29 +124,23 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
 
   Future<void> _downloadAudio() async {
     if (_audioPath == null) return;
-
     final audioFile = File(_audioPath!);
     if (!audioFile.existsSync()) return;
 
     final dir = await getExternalStorageDirectory();
-    final downloadPath = '${dir!.path}/audio_guardado.m4a';
-    final savedFile = await audioFile.copy(downloadPath);
+    final savedFile = await audioFile.copy('${dir!.path}/audio_guardado.m4a');
 
-    // await OpenFile.open(savedFile.path);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Audio guardado en: ${savedFile.path}')),
     );
   }
 
   int _getCultivoId(String cultivo) {
-    switch (cultivo.toLowerCase()) {
-      case 'papa':
-        return 1;
-      case 'tomate':
-        return 2;
-      default:
-        return 0;
-    }
+    final match = _cultivos.firstWhere(
+      (c) => c.nombre.toLowerCase() == cultivo.toLowerCase(),
+      orElse: () => Cultivo(id: 0, nombre: 'Desconocido'),
+    );
+    return match.id;
   }
 
   Future<void> _enviarDatos() async {
@@ -137,7 +170,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
       final responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 201) {
-        _mostrarDialogo("Éxito", "Datos enviados correctamente.");
+        _mostrarDialogo("Éxito", "Datos enviados correctamente.", volver: true);
       } else {
         _mostrarDialogo("Error", "Error al enviar datos. Código: ${response.statusCode}");
       }
@@ -146,7 +179,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     }
   }
 
-  void _mostrarDialogo(String titulo, String mensaje) {
+  void _mostrarDialogo(String titulo, String mensaje, {bool volver = false}) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -154,7 +187,10 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
         content: Text(mensaje),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (volver) Navigator.of(context).pop('enviado');
+            },
             child: const Text("OK"),
           ),
         ],
@@ -175,9 +211,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     return Scaffold(
       backgroundColor: blanco,
       appBar: AppBar(
-        title: Text('Diagnóstico',
-            style: GoogleFonts.lato(
-                color: negro, fontWeight: FontWeight.bold)),
+        title: Text('Diagnóstico', style: GoogleFonts.lato(color: negro, fontWeight: FontWeight.bold)),
         backgroundColor: blanco,
         iconTheme: const IconThemeData(color: negro),
         elevation: 0,
@@ -189,9 +223,7 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
             Image.file(widget.imagenFile, height: 200),
             const SizedBox(height: 16),
 
-            Text('Selecciona tu cultivo:',
-                style: GoogleFonts.lato(
-                    fontWeight: FontWeight.bold, color: negro)),
+            Text('Selecciona tu cultivo:', style: GoogleFonts.lato(fontWeight: FontWeight.bold, color: negro)),
             const SizedBox(height: 8),
 
             DropdownButtonFormField<String>(
@@ -204,28 +236,19 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
               ),
               iconEnabledColor: negro,
               dropdownColor: blanco,
-              items: ['Papa', 'Tomate'].map((cultivo) {
+              items: _cultivos.map((cultivo) {
                 return DropdownMenuItem(
-                  value: cultivo,
-                  child: Text(cultivo,
-                      style: GoogleFonts.lato(color: negro)),
+                  value: cultivo.nombre,
+                  child: Text(cultivo.nombre, style: GoogleFonts.lato(color: negro)),
                 );
               }).toList(),
               onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedCultivo = value;
-                  });
-                }
+                if (value != null) setState(() => _selectedCultivo = value);
               },
             ),
 
             const SizedBox(height: 16),
-            Text(
-              'Diagnóstico para $_selectedCultivo:',
-              style: GoogleFonts.lato(
-                  fontSize: 18, fontWeight: FontWeight.bold, color: negro),
-            ),
+            Text('Diagnóstico para $_selectedCultivo:', style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: negro)),
             const SizedBox(height: 8),
 
             Container(
@@ -234,18 +257,9 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
                 color: blanco,
                 border: Border.all(color: grisClaro),
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  )
-                ],
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
               ),
-              child: Text(
-                'Resultado preliminar: virus del rizado amarillo',
-                style: GoogleFonts.lato(fontSize: 16, color: negro),
-              ),
+              child: Text('Resultado preliminar: virus del rizado amarillo', style: GoogleFonts.lato(fontSize: 16, color: negro)),
             ),
 
             const SizedBox(height: 16),
@@ -266,80 +280,30 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
             ),
 
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _isRecording ? _stopRecording : _startRecording,
-              icon: Icon(
-                _isRecording ? Icons.stop : Icons.mic,
-                color: negro,
-              ),
-              label: Text(
-                _isRecording ? 'Detener grabación' : 'Grabar audio (1 min máx)',
-                style: GoogleFonts.lato(color: negro),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: amarilloClaro,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isRecording ? _stopRecording : _startRecording,
+                  icon: Icon(_isRecording ? Icons.stop : Icons.mic, color: negro),
+                  label: Text(_isRecording ? 'Detener' : 'Grabar audio', style: GoogleFonts.lato(color: negro)),
+                  style: ElevatedButton.styleFrom(backgroundColor: amarilloClaro),
                 ),
-              ),
+                const SizedBox(width: 12),
+                if (_audioPath != null)
+                  ElevatedButton.icon(
+                    onPressed: _isPlaying ? _stopAudio : _playAudio,
+                    icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: negro),
+                    label: Text(_isPlaying ? 'Detener' : 'Reproducir', style: GoogleFonts.lato(color: negro)),
+                    style: ElevatedButton.styleFrom(backgroundColor: grisClaro),
+                  ),
+              ],
             ),
 
-            if (_audioPath != null)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 12),
-                  Text('Audio guardado en: $_audioPath',
-                      style: GoogleFonts.lato(color: negro)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _isPlaying ? _stopAudio : _playAudio,
-                        icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow,
-                            color: blanco),
-                        label: Text(_isPlaying ? "Detener" : "Reproducir",
-                            style: GoogleFonts.lato(color: blanco)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: verdeOscuro,
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 16),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        onPressed: _downloadAudio,
-                        icon: const Icon(Icons.download, color: blanco),
-                        label: Text("Descargar",
-                            style: GoogleFonts.lato(color: blanco)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 16),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-
             const SizedBox(height: 24),
-            ElevatedButton.icon(
+            ElevatedButton(
               onPressed: _enviarDatos,
-              icon: const Icon(Icons.send, color: negro),
-              label: Text("Enviar diagnóstico",
-                  style: GoogleFonts.lato(color: negro)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: verdeClaro,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                textStyle: GoogleFonts.lato(fontSize: 16),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              child: Text("Enviar diagnóstico", style: GoogleFonts.lato(fontWeight: FontWeight.bold, color: blanco)),
+              style: ElevatedButton.styleFrom(backgroundColor: verdeOscuro),
             ),
           ],
         ),

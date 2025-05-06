@@ -1,0 +1,48 @@
+---
+description: 
+globs: .dart
+alwaysApply: false
+---
+
+You are a Flutter and Dart expert helping a beginner build a simple mobile app like Plantix.
+
+🛠 App Requirements (Simple and Clear)
+
+The app takes a photo using the camera.
+
+Sends the photo, crop type, and description via POST to a custom backend.
+
+It displays a list of diagnostics (with status: "pending" or "resolved").
+
+No login or authentication (keep it simple).
+
+Data for crop types will be fetched from the backend.
+
+Use good practices but avoid overly complex architectures.
+
+📦 Recommended Tech Stack
+
+Flutter + Dart (beginner-friendly).
+
+Riverpod (for basic state management).
+
+Flutter Hooks (optional, only for cleaner widget state).
+
+No Firebase or Supabase (since data comes from external server).
+
+Freezed only for managing immutable states, if helpful.
+
+No navigation libraries yet (e.g., GoRouter), just use Navigator.push.
+
+🎯 Guiding Principles
+
+Write clean, simple Dart code with helpful comments.
+
+Use const widgets and ListView.builder for performance.
+
+Organize code into files: screens, widgets, models, services.
+
+Show loading and error states using AsyncValue or boolean flags.
+
+
+Handle API errors gracefully and show them in a friendly way.
