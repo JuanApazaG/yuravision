@@ -9,6 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:lottie/lottie.dart';
 
 import '../models/cultivo_model.dart';
 
@@ -19,6 +22,8 @@ const Color amarilloClaro = Color(0xFFFCEC9F);
 const Color grisClaro = Color(0xFFE0E0E0);
 const Color blanco = Colors.white;
 const Color negro = Colors.black;
+
+List<CameraDescription> cameras = [];
 
 class DiagnosticoPage extends StatefulWidget {
   final File imagenFile;
@@ -42,12 +47,21 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
   bool _isLoadingCultivos = true;
   String _selectedCultivo = 'Papa';
 
+  // Nuevo: controlador y texto de búsqueda
+  final TextEditingController _searchController = TextEditingController();
+  String _searchText = '';
+
   @override
   void initState() {
     super.initState();
     _initRecorder();
     _player.openPlayer();
     _fetchCultivos();
+    _searchController.addListener(() {
+      setState(() {
+        _searchText = _searchController.text.trim().toLowerCase();
+      });
+    });
   }
 
   Future<void> _initRecorder() async {
@@ -203,111 +217,261 @@ class _DiagnosticoPageState extends State<DiagnosticoPage> {
     _recorder.closeRecorder();
     _player.closePlayer();
     _controller.dispose();
+    _searchController.dispose(); // Liberar el controlador de búsqueda
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: blanco,
+      backgroundColor: const Color(0xFFF7F7F7),
       appBar: AppBar(
-        title: Text('Diagnóstico', style: GoogleFonts.lato(color: negro, fontWeight: FontWeight.bold)),
-        backgroundColor: blanco,
+        title: Text('Diagnostico', style: GoogleFonts.montserrat(color: negro, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFFF7F7F7),
         iconTheme: const IconThemeData(color: negro),
         elevation: 0,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
         child: ListView(
           children: [
-            Image.file(widget.imagenFile, height: 200),
-            const SizedBox(height: 16),
-
-            Text('Selecciona tu cultivo:', style: GoogleFonts.lato(fontWeight: FontWeight.bold, color: negro)),
             const SizedBox(height: 8),
-
-            DropdownButtonFormField<String>(
-              value: _selectedCultivo,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: grisClaro),
+            Text(
+              'Diagnosticar problema',
+              style: GoogleFonts.montserrat(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: negro,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.file(
+                  widget.imagenFile,
+                  height: 170,
+                  width: 170,
+                  fit: BoxFit.cover,
                 ),
               ),
-              iconEnabledColor: negro,
-              dropdownColor: blanco,
-              items: _cultivos.map((cultivo) {
-                return DropdownMenuItem(
-                  value: cultivo.nombre,
-                  child: Text(cultivo.nombre, style: GoogleFonts.lato(color: negro)),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) setState(() => _selectedCultivo = value);
-              },
             ),
-
-            const SizedBox(height: 16),
-            Text('Diagnóstico para $_selectedCultivo:', style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: negro)),
-            const SizedBox(height: 8),
-
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: blanco,
-                border: Border.all(color: grisClaro),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-              ),
-              child: Text('Resultado preliminar: virus del rizado amarillo', style: GoogleFonts.lato(fontSize: 16, color: negro)),
-            ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 22),
+            // Buscador para cultivos
             TextField(
-              controller: _controller,
-              maxLines: 4,
+              controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Describe mejor tu problema...',
-                hintStyle: GoogleFonts.lato(color: Colors.black54),
+                prefixIcon: const Icon(Icons.search, color: Colors.black45),
+                hintText: 'Buscar cultivo...',
+                hintStyle: GoogleFonts.montserrat(color: Colors.black38),
                 filled: true,
-                fillColor: blanco,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                 border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
                   borderSide: const BorderSide(color: grisClaro),
-                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: const BorderSide(color: grisClaro),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: verdeClaro, width: 2),
                 ),
               ),
-              style: GoogleFonts.lato(color: negro),
+              style: GoogleFonts.montserrat(color: negro, fontSize: 15),
             ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Selector de cultivos tipo pill horizontal con filtro
+            SizedBox(
+              height: 48,
+              child: _isLoadingCultivos
+                  ? const Center(child: CircularProgressIndicator())
+                  : Builder(
+                      builder: (context) {
+                        final cultivosFiltrados = _searchText.isEmpty
+                            ? _cultivos
+                            : _cultivos.where((c) => c.nombre.toLowerCase().contains(_searchText)).toList();
+                        if (cultivosFiltrados.isEmpty) {
+                          return Center(
+                            child: Text('No se encontraron cultivos', style: GoogleFonts.montserrat(color: Colors.black38)),
+                          );
+                        }
+                        return ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: cultivosFiltrados.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (context, index) {
+                            final cultivo = cultivosFiltrados[index];
+                            final isSelected = cultivo.nombre == _selectedCultivo;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() => _selectedCultivo = cultivo.nombre);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? verdeClaro : Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(color: isSelected ? verdeClaro : grisClaro, width: 2),
+                                  boxShadow: isSelected
+                                      ? [BoxShadow(color: verdeClaro.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))]
+                                      : [],
+                                ),
+                                child: Text(
+                                  cultivo.nombre,
+                                  style: GoogleFonts.montserrat(
+                                    color: isSelected ? Colors.white : negro,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'Describe el problema',
+              style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, fontSize: 16, color: negro),
+            ),
+            const SizedBox(height: 8),
+            Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                TextField(
+                  controller: _controller,
+                  maxLines: 4,
+                  maxLength: 200,
+                  decoration: InputDecoration(
+                    hintText: 'Ej: las hojas tienen....',
+                    hintStyle: GoogleFonts.montserrat(color: Colors.black45),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderSide: const BorderSide(color: grisClaro),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    counterText: '',
+                  ),
+                  style: GoogleFonts.montserrat(color: negro),
+                  onChanged: (_) => setState(() {}),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12, bottom: 8),
+                  child: Text(
+                    '${_controller.text.length}/200 caracteres',
+                    style: GoogleFonts.montserrat(fontSize: 12, color: Colors.black38),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Grabar una explicacion (opcional)',
+              style: GoogleFonts.montserrat(fontWeight: FontWeight.w500, fontSize: 15, color: negro),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
-                ElevatedButton.icon(
-                  onPressed: _isRecording ? _stopRecording : _startRecording,
-                  icon: Icon(_isRecording ? Icons.stop : Icons.mic, color: negro),
-                  label: Text(_isRecording ? 'Detener' : 'Grabar audio', style: GoogleFonts.lato(color: negro)),
-                  style: ElevatedButton.styleFrom(backgroundColor: amarilloClaro),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isRecording ? _stopRecording : _startRecording,
+                    icon: Icon(_isRecording ? Icons.stop : Icons.mic, color: negro),
+                    label: Text(_isRecording ? 'Detener' : 'Grabar audio', style: GoogleFonts.montserrat(color: negro)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: amarilloClaro,
+                      foregroundColor: negro,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 if (_audioPath != null)
-                  ElevatedButton.icon(
-                    onPressed: _isPlaying ? _stopAudio : _playAudio,
-                    icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: negro),
-                    label: Text(_isPlaying ? 'Detener' : 'Reproducir', style: GoogleFonts.lato(color: negro)),
-                    style: ElevatedButton.styleFrom(backgroundColor: grisClaro),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _isPlaying ? _stopAudio : _playAudio,
+                      icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: negro),
+                      label: Text(_isPlaying ? 'Detener' : 'Reproducir', style: GoogleFonts.montserrat(color: negro)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: grisClaro,
+                        foregroundColor: negro,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
                   ),
               ],
             ),
-
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _enviarDatos,
-              child: Text("Enviar diagnóstico", style: GoogleFonts.lato(fontWeight: FontWeight.bold, color: blanco)),
-              style: ElevatedButton.styleFrom(backgroundColor: verdeOscuro),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _enviarDatos,
+                child: Text(
+                  'Enviar para Analisis',
+                  style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 17),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: verdeClaro,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 2,
+                ),
+              ),
             ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
+    );
+  }
+}
+
+class CustomCameraPage extends StatefulWidget {
+  final List<CameraDescription> cameras;
+  const CustomCameraPage({super.key, required this.cameras});
+
+  @override
+  State<CustomCameraPage> createState() => _CustomCameraPageState();
+}
+
+class _CustomCameraPageState extends State<CustomCameraPage> {
+  late CameraController _controller;
+  bool _isCameraReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    if (widget.cameras.isNotEmpty) {
+      _controller = CameraController(widget.cameras[0], ResolutionPreset.medium);
+      await _controller!.initialize();
+      setState(() {
+        _isCameraReady = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _isCameraReady ? CameraPreview(_controller) : const Center(child: CircularProgressIndicator()),
     );
   }
 }

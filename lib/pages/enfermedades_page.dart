@@ -21,14 +21,14 @@ class Diagnostico {
   });
 }
 
-class ComunidadPage extends StatefulWidget {
-  const ComunidadPage({super.key});
+class EnfermedadesPage extends StatefulWidget {
+  const EnfermedadesPage({super.key});
 
   @override
-  State<ComunidadPage> createState() => _ComunidadPageState();
+  State<EnfermedadesPage> createState() => _EnfermedadesPageState();
 }
 
-class _ComunidadPageState extends State<ComunidadPage> {
+class _EnfermedadesPageState extends State<EnfermedadesPage> {
   List<Diagnostico> diagnosticos = [
     Diagnostico(
       id: 1,

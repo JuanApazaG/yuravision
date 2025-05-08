@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'pages/inicio_page.dart';
-import 'pages/comunidad_page.dart';
+import 'pages/enfermedades_page.dart';
 import 'pages/perfil_page.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'pages/custom_camera_page.dart';
 
-void main() => runApp(const MyApp());
+List<CameraDescription> cameras = [];
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  cameras = await availableCameras();
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -40,7 +48,7 @@ class _HomePageState extends State<HomePage> {
 
   final List<Widget> _pages = [
     const InicioPage(),
-    const ComunidadPage(),
+    const EnfermedadesPage(),
     const PerfilPage(),
   ];
 
@@ -50,7 +58,7 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  final List<String> _titles = ['Inicio', 'Comunidad', 'Usted'];
+  final List<String> _titles = ['Inicio', 'Enfermedades', 'Usted'];
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +82,7 @@ class _HomePageState extends State<HomePage> {
         
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Comunidad'),
+          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Enfermedades'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Usted'),
         ],
         currentIndex: _selectedIndex,
